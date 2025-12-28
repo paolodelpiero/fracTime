@@ -2,9 +2,14 @@ from fractime.core.returns import log_returns
 from fractime.data.loader import load_data
 from fractime.core.hurst import hurst_exponent
 from fractime.forecasters.rs_forecaster import rs_forecast
-from fractime.backtest.engine import rs_backtest
+from fractime.backtest.engine import rs_backtest, st_frsr_backtest, fractal_projections_backtest
 from fractime.core.ttw import calculate_activity, calculate_dilation, calculate_trading_time, apply_ttw
-from fractime.forecasters.st_frsr import identify_states
+from fractime.forecasters.st_frsr import identify_states, calculate_transition_matrix, st_frsr_forecast
+from fractime.forecasters.fractal_projections import fractal_projection_forecast
+from fractime.forecasters.fractal_classification import fractal_classification_forecast, fractal_classification_backtest
+from fractime.forecasters.ensemble import fractal_ensemble_forecast, fractal_ensemble_backtest
+from fractime.backtest.engine import full_backtest
+
 import numpy as np
 import pandas as pd
 
@@ -55,3 +60,44 @@ print(f"Accuracy warped: {accuracy_warped:.4f}")
 
 states, kmeans_model, scaler_model = identify_states(returns)
 print(f"\n\nIdentified States:\n{states.value_counts()}")
+
+transition_matrix = calculate_transition_matrix(states)
+print(f"\nTransition Matrix:\n{transition_matrix}")
+predicted_return = st_frsr_forecast(returns)
+
+print("\n\nFR-Forecaster vs ST-FRSR Forecaster Comparison: ")
+print(f"ST-FRSR Predicted Return: {predicted_return}")
+print(f"RS-Forecaster Predicted Return: {forecast}")
+
+accuracy_st_frsr = st_frsr_backtest(returns, window_short=5, window_long=20, n_states=3)
+print(f"ST-FRSR Backtest Accuracy: {accuracy_st_frsr}")
+
+fractal_forecast = fractal_projection_forecast(returns, pattern_length=10, min_similarity=0.7, lookahead=1)
+print(f"Fractal Projection Forecasted Return: {fractal_forecast}")
+
+accuracy_fractal = fractal_projections_backtest(returns, window_hurst=500, window_trend=10)
+print(f"\nFractal Projections Backtest Accuracy: {accuracy_fractal}")
+
+# Test singolo forecast
+forecast_fc = fractal_classification_forecast(returns, n_classes=4, window=20)
+print(f"Fractal Classification Forecast: {forecast_fc}")
+
+# Backtest
+print("Fractal Classification Backtest in corso...")
+accuracy_fc = fractal_classification_backtest(returns, n_classes=4, window=20, min_history=100)
+print(f"Fractal Classification Accuracy: {accuracy_fc:.4f}")
+
+# Test singolo
+ensemble_forecast = fractal_ensemble_forecast(returns, method='vote')
+print(f"Ensemble Forecast (vote): {ensemble_forecast}")
+
+# Backtest tutti i metodi
+for method in ['vote', 'mean', 'weighted']:
+    accuracy = fractal_ensemble_backtest(returns, method=method, min_history=500)
+    print(f"Ensemble Accuracy ({method}): {accuracy:.4f}")
+
+metrics = full_backtest(returns, fractal_projection_forecast, min_history=100, 
+                        pattern_length=20, min_similarity=0.5)
+print("Metriche Fractal Projection:")
+for k, v in metrics.items():
+    print(f"  {k}: {v:.4f}")
