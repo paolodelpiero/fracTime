@@ -84,7 +84,7 @@ def full_backtest(returns, forecaster_func, min_history=500, **forecaster_params
 
     predictions = []
     actuals = []
-    strategy_returns = []  # rendimenti della strategia
+    strategy_returns = []  # strategy returns
 
     for i in range(min_history, len(returns) - 1):
         past_returns = returns.iloc[:i]
@@ -96,11 +96,11 @@ def full_backtest(returns, forecaster_func, min_history=500, **forecaster_params
 
         actual = returns.iloc[i]
 
-        # Salva previsione e reale
+        # Save forecast and actual
         predictions.append(forecast)
         actuals.append(actual)
 
-        # Calcola rendimento strategia: se prevedi positivo, vai long; se negativo, vai short
+        # Calculate strategy return: if forecast positive, go long; if negative, go short
         if forecast > 0:
             strategy_returns.append(actual)  # long
         elif forecast < 0:
@@ -108,12 +108,12 @@ def full_backtest(returns, forecaster_func, min_history=500, **forecaster_params
         else:
             strategy_returns.append(0)  # no trade
 
-    # Converti in array numpy
+    # Convert to numpy array
     predictions = np.array(predictions)
     actuals = np.array(actuals)
     strategy_returns = np.array(strategy_returns)
 
-    # Calcola metriche
+    # Calculate metrics
     metrics = {
         "directional_accuracy": calculate_directional_accuracy(actuals, predictions),
         "rmse": calculate_rmse(actuals, predictions),
