@@ -4,11 +4,11 @@ from fractime.forecasters.fractal_projections import fractal_projection_forecast
 from fractime.forecasters.fractal_classification import fractal_classification_forecast
 
 def fractal_ensemble_forecast(returns, method='vote'):
-    rs_forecast_prevision = rs_forecast(returns, window_hurst=500, window_trend=10)
-    st_frsr_forecast_prevision = st_frsr_forecast(returns, window_short=5, window_long=20, n_states=3)
-    fractal_projection_prevision = fractal_projection_forecast(returns, pattern_length=10, min_similarity=0.7, lookahead=1)
-    fractal_classification_prevision = fractal_classification_forecast(returns, n_classes=4, window=20)
-    forecasts = [rs_forecast_prevision, st_frsr_forecast_prevision, fractal_projection_prevision, fractal_classification_prevision]
+    rs_forecast_prediction = rs_forecast(returns, window_hurst=500, window_trend=10)
+    st_frsr_forecast_prediction = st_frsr_forecast(returns, window_short=5, window_long=20, n_states=3)
+    fractal_projection_prediction = fractal_projection_forecast(returns, pattern_length=10, min_similarity=0.7, lookahead=1)
+    fractal_classification_prediction = fractal_classification_forecast(returns, n_classes=4, window=20)
+    forecasts = [rs_forecast_prediction, st_frsr_forecast_prediction, fractal_projection_prediction, fractal_classification_prediction]
     if method == 'vote':
         signs = [1 if f > 0 else -1 if f < 0 else 0 for f in forecasts]
         vote = sum(signs)
@@ -19,7 +19,7 @@ def fractal_ensemble_forecast(returns, method='vote'):
         weights = [0.10, 0.10, 0.40, 0.40]  # RS, ST-FRSR, Projection, Classification
         combined_forecast = sum(f * w for f, w in zip(forecasts, weights))
     else:
-        raise ValueError("Metodo sconosciuto. Usa 'vote', 'mean' o 'weighted'.")    
+        raise ValueError("Unknown method. Use 'vote', 'mean' or 'weighted'.")    
     return combined_forecast
 
 def fractal_ensemble_backtest(returns, method='vote', min_history=500):

@@ -9,20 +9,22 @@ from fractime.forecasters.fractal_projections import fractal_projection_forecast
 from fractime.forecasters.fractal_classification import fractal_classification_forecast, fractal_classification_backtest
 from fractime.forecasters.ensemble import fractal_ensemble_forecast, fractal_ensemble_backtest
 from fractime.backtest.engine  import full_backtest
-from fractime.analysis.scanner import scan_asset, scan_multiple_assets
+from fractime.analysis.scanner import scan_multiple_assets
 from fractime.core.fractal_interpolation import fractal_interpolate
 from fractime.core.fractal_interpolation import fractal_interpolate_adaptive, test_interpolation_benefit
 from fractime.analysis.mdfa import fractal_coherence, rolling_coherence
 from fractime.simulation.fbm import generate_fbm_path, generate_price_scenarios, calculate_risk_metrics
-from fractime.forecasters.fractal_reduction import decompose_to_binary, forecast_binary_series
+from fractime.forecasters.fractal_reduction import forecast_binary_series
 from fractime.forecasters.fractal_reduction import fractal_reduction_forecast, fractal_reduction_backtest, decompose_to_binary_adaptive
+from fractime.backtest.statistical_tests import diebold_mariano_test, collect_forecast_errors, collect_directional_errors
+from fractime.forecasters.benchmark_models import garch_mean_forecast, arima_forecast
 
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-data = load_data("BTC-USD", "2024-01-01", "2025-12-01", "1h")
+data = load_data("BTC-USD", "2020-01-01", "2025-12-01", "1d")
 
 returns = log_returns(data['Close'])
 hurst = hurst_exponent(returns.values)
@@ -56,8 +58,7 @@ for alpha in [0.25, 0.5, 0.75, 1.0, 1.5]:
     hurst_warped = hurst_exponent(np.diff(np.log(warped_prices)))
     print(f"Alpha {alpha}: Hurst warped = {hurst_warped:.4f}")
 
-
-'''print("\n\nBacktest Accuracy Comparison between Original and Warped Prices:")
+print("\n\nBacktest Accuracy Comparison between Original and Warped Prices:")
 accuracy_original = rs_backtest(returns, window_hurst=500, window_trend=10)
 
 warped_prices = apply_ttw(data['Close'], returns, data["Volume"], alpha=0.5)
@@ -266,7 +267,7 @@ scenarios = generate_price_scenarios(
 risk = calculate_risk_metrics(scenarios, confidence_level=0.95)
 print("\nRisk Metrics (30 days, 1000 scenarios):")
 for k, v in risk.items():
-    print(f"  {k}: {v:.4f}")'''
+    print(f"  {k}: {v:.4f}")
 
 # Test Fractal Reduction with adaptive thresholds
 print("=" * 60)
@@ -302,3 +303,114 @@ print("\nComparison between different gates:")
 for gate in ['AND', 'OR', 'MAJORITY']:
     acc = fractal_reduction_backtest(data['Close'], n_levels=5, window=10, gate=gate, min_history=100, lookback=50)
     print(f"  {gate}: {acc:.4f}")
+
+print("\n=== DIEBOLD-MARIANO TEST - DIRECTIONAL COMPARISONS ===\n")
+
+errors_fr_dir = collect_directional_errors(data['Close'], fractal_reduction_forecast,
+                                            min_history=100, n_levels=5, window=10, gate='AND', lookback=50)
+
+def returns_to_directional_errors(errors, predictions, actuals):
+    """Converts return errors to directional errors"""
+    dir_errors = []
+    for pred, actual in zip(predictions, actuals):
+        predicted_up = pred > 0
+        actual_up = actual > 0
+        dir_errors.append(0 if predicted_up == actual_up else 1)
+    return np.array(dir_errors)
+
+errors_fp, actuals_fp, preds_fp = collect_forecast_errors(returns, fractal_projection_forecast, 
+                                                           min_history=100, pattern_length=20, min_similarity=0.5)
+errors_rs, actuals_rs, preds_rs = collect_forecast_errors(returns, rs_forecast,
+                                                           min_history=500, window_hurst=500, window_trend=10)
+
+errors_fp_dir = returns_to_directional_errors(errors_fp, preds_fp, actuals_fp)
+errors_rs_dir = returns_to_directional_errors(errors_rs, preds_rs, actuals_rs)
+
+min_len = min(len(errors_fp_dir), len(errors_rs_dir), len(errors_fr_dir))
+errors_fp_dir = errors_fp_dir[-min_len:]
+errors_rs_dir = errors_rs_dir[-min_len:]
+errors_fr_dir = errors_fr_dir[-min_len:]
+
+dm, pv = diebold_mariano_test(errors_fp_dir, errors_rs_dir, loss='absolute')
+print(f"Fractal Projection vs RS: DM={dm:.4f}, p={pv:.4f}, Sig={pv<0.05}")
+
+dm, pv = diebold_mariano_test(errors_fr_dir, errors_rs_dir, loss='absolute')
+print(f"Fractal Reduction vs RS: DM={dm:.4f}, p={pv:.4f}, Sig={pv<0.05}")
+
+dm, pv = diebold_mariano_test(errors_fp_dir, errors_fr_dir, loss='absolute')
+print(f"Fractal Projection vs Fractal Reduction: DM={dm:.4f}, p={pv:.4f}, Sig={pv<0.05}")
+
+print("\n=== BACKTEST GARCH vs FRACTAL ===\n")
+
+def garch_backtest(returns, p=1, q=1, min_history=200):
+    correct = 0
+    total = 0
+    
+    if hasattr(returns, 'values'):
+        returns_arr = returns.values
+    else:
+        returns_arr = returns
+    
+    for i in range(min_history, len(returns_arr) - 1):
+        past = returns_arr[:i]
+        
+        try:
+            mean_pred, _ = garch_mean_forecast(past, p, q)
+            if np.isnan(mean_pred):
+                continue
+        except Exception:
+            continue
+        
+        actual = returns_arr[i]
+        
+        if (mean_pred > 0 and actual > 0) or (mean_pred < 0 and actual < 0):
+            correct += 1
+        total += 1
+    
+    return correct / total if total > 0 else 0
+
+print("Backtest GARCH in progress... (may take a few minutes)")
+accuracy_garch = garch_backtest(returns, p=1, q=1, min_history=200)
+print(f"GARCH(1,1) Accuracy: {accuracy_garch:.4f}")
+
+def arima_backtest(returns, p=1, d=0, q=1, min_history=100):
+    """Backtest for ARIMA."""
+    correct = 0
+    total = 0
+    
+    if hasattr(returns, 'values'):
+        returns_arr = returns.values
+    else:
+        returns_arr = returns
+    
+    for i in range(min_history, len(returns_arr) - 1):
+        past = returns_arr[:i]
+        
+        try:
+            pred = arima_forecast(past, p, d, q)
+            if np.isnan(pred):
+                continue
+        except Exception:
+            continue
+        
+        actual = returns_arr[i]
+        
+        if (pred > 0 and actual > 0) or (pred < 0 and actual < 0):
+            correct += 1
+        total += 1
+    
+    return correct / total if total > 0 else 0
+
+print("Backtest ARIMA in progress... (may take a few minutes)")
+accuracy_arima = arima_backtest(returns, p=1, d=0, q=1, min_history=100)
+print(f"ARIMA(1,0,1) Accuracy: {accuracy_arima:.4f}")
+
+# Updated final comparison
+print("\n=== COMPLETE FINAL COMPARISON ===")
+print("RS Forecaster:           47.74%")
+print("ST-FRSR:                 47.80%")
+print("Fractal Classification:  50.15%")
+print(f"ARIMA(1,0,1):            {accuracy_arima*100:.2f}%")
+print(f"GARCH(1,1):              {accuracy_garch*100:.2f}%")
+print("Fractal Projection:      51.43%")
+print("Fractal Reduction (AND): 52.75%")
