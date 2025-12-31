@@ -18,12 +18,22 @@ fracTime provides advanced tools for analyzing and forecasting financial time se
 - **State-based FRSR (ST-FRSR)**: State transition-based forecasting using clustering
 - **Fractal Projections**: Pattern-based forecasting using historical similarity
 - **Fractal Classification**: Classification-based approach with machine learning
+- **Fractal Reduction**: Binary decomposition with adaptive thresholds for multi-level forecasting
 - **Ensemble Methods**: Combine multiple forecasters (voting, mean, weighted)
+- **Benchmark Models**: GARCH and ARIMA for comparison
 
 ### Backtesting & Analysis
 - Comprehensive backtesting engine with multiple metrics
 - Performance evaluation (accuracy, precision, recall, F1-score, Sharpe ratio)
+- Statistical tests (Diebold-Mariano test for forecast comparison)
 - Support for all forecasting methods
+- Multi-asset scanner for batch analysis
+
+### Advanced Features
+- **Fractal Interpolation**: Adaptive and fixed alpha interpolation methods
+- **Fractional Brownian Motion (FBM)**: Price scenario generation with risk metrics
+- **Fractal Coherence (MDFA)**: Multi-dimensional fractal analysis for correlation
+- **Rolling Coherence**: Time-varying coherence analysis
 
 ## Installation
 
@@ -157,6 +167,161 @@ for metric, value in metrics.items():
     print(f"{metric}: {value:.4f}")
 ```
 
+### Fractal Interpolation
+
+```python
+from fractime.core.fractal_interpolation import (
+    fractal_interpolate,
+    fractal_interpolate_adaptive,
+    test_interpolation_benefit
+)
+
+# Fixed alpha interpolation
+prices = data['Close'].values[:50]
+interpolated = fractal_interpolate(prices, expansion_factor=2, alpha=0.3)
+
+# Adaptive alpha interpolation
+interpolated_adaptive, alpha = fractal_interpolate_adaptive(
+    prices,
+    expansion_factor=2
+)
+print(f"Calculated alpha: {alpha}")
+
+# Test if interpolation improves forecasts
+benefit = test_interpolation_benefit(data['Close'], test_size=200)
+print(f"Improvement: {benefit[2]:.2f}%")
+```
+
+### Fractional Brownian Motion Simulation
+
+```python
+from fractime.simulation.fbm import (
+    generate_fbm_path,
+    generate_price_scenarios,
+    calculate_risk_metrics
+)
+
+# Generate FBM path
+path = generate_fbm_path(n_steps=200, H=0.7, seed=42)
+
+# Generate price scenarios
+scenarios = generate_price_scenarios(
+    current_price=100,
+    H=0.7,
+    volatility=0.01,
+    n_steps=30,
+    n_scenarios=1000
+)
+
+# Calculate risk metrics
+risk = calculate_risk_metrics(scenarios, confidence_level=0.95)
+print(f"VaR: {risk['var']:.4f}")
+print(f"CVaR: {risk['cvar']:.4f}")
+```
+
+### Fractal Coherence Analysis
+
+```python
+from fractime.analysis.mdfa import fractal_coherence, rolling_coherence
+
+# Calculate coherence between price and volume
+volume_returns = log_returns(data['Volume'])
+coherence, H_price, H_volume = fractal_coherence(
+    returns,
+    volume_returns,
+    window=100,
+    step=10
+)
+print(f"Fractal Coherence: {coherence:.4f}")
+
+# Rolling coherence over time
+coherence_series = rolling_coherence(
+    returns,
+    volume_returns,
+    coherence_window=50,
+    hurst_window=100,
+    step=10
+)
+```
+
+### Fractal Reduction Forecaster
+
+```python
+from fractime.forecasters.fractal_reduction import (
+    fractal_reduction_forecast,
+    fractal_reduction_backtest,
+    decompose_to_binary_adaptive
+)
+
+# Single forecast
+prices = data['Close'].values[-100:]
+prediction = fractal_reduction_forecast(
+    prices,
+    n_levels=5,
+    window=10,
+    gate='MAJORITY',
+    lookback=50
+)
+
+# Backtest with different logic gates
+for gate in ['AND', 'OR', 'MAJORITY']:
+    accuracy = fractal_reduction_backtest(
+        data['Close'],
+        n_levels=5,
+        window=10,
+        gate=gate,
+        min_history=100
+    )
+    print(f"{gate}: {accuracy:.4f}")
+```
+
+### Statistical Testing
+
+```python
+from fractime.backtest.statistical_tests import (
+    diebold_mariano_test,
+    collect_forecast_errors
+)
+
+# Collect forecast errors from two models
+errors1, actuals1, preds1 = collect_forecast_errors(
+    returns,
+    fractal_projection_forecast,
+    min_history=100,
+    pattern_length=20
+)
+
+errors2, actuals2, preds2 = collect_forecast_errors(
+    returns,
+    rs_forecast,
+    min_history=500,
+    window_hurst=500
+)
+
+# Compare forecasts with Diebold-Mariano test
+dm_stat, p_value = diebold_mariano_test(errors1, errors2, loss='squared')
+print(f"DM Statistic: {dm_stat:.4f}, p-value: {p_value:.4f}")
+print(f"Significant difference: {p_value < 0.05}")
+```
+
+### Multi-Asset Scanning
+
+```python
+from fractime.analysis.scanner import scan_multiple_assets
+
+# Scan multiple assets
+results = scan_multiple_assets(
+    ['BTC-USD', 'ETH-USD', 'AAPL', 'MSFT', 'SPY'],
+    start_date="2024-01-01",
+    end_date="2025-12-01",
+    interval='1h'
+)
+
+# View results sorted by Sharpe ratio
+print(results[['ticker', 'sharpe_ratio', 'hurst', 'data_points']]
+      .sort_values(by='sharpe_ratio', ascending=False))
+```
+
 ## Project Structure
 
 ```
@@ -164,16 +329,25 @@ fractime/
 ├── core/              # Core functionality
 │   ├── hurst.py       # Hurst exponent calculation
 │   ├── returns.py     # Returns calculation
-│   └── ttw.py         # Trading Time Warping
+│   ├── ttw.py         # Trading Time Warping
+│   └── fractal_interpolation.py  # Fractal interpolation methods
 ├── forecasters/       # Forecasting models
 │   ├── rs_forecaster.py           # R/S based forecaster
 │   ├── st_frsr.py                 # State-based forecaster
 │   ├── fractal_projections.py     # Pattern-based forecaster
 │   ├── fractal_classification.py  # ML classification forecaster
+│   ├── fractal_reduction.py       # Binary reduction forecaster
+│   ├── benchmark_models.py        # GARCH and ARIMA models
 │   └── ensemble.py                # Ensemble methods
 ├── backtest/          # Backtesting framework
 │   ├── engine.py      # Backtesting engine
-│   └── metrics.py     # Performance metrics
+│   ├── metrics.py     # Performance metrics
+│   └── statistical_tests.py  # Statistical comparison tests
+├── simulation/        # Simulation tools
+│   └── fbm.py         # Fractional Brownian Motion
+├── analysis/          # Analysis tools
+│   ├── scanner.py     # Multi-asset scanner
+│   └── mdfa.py        # Fractal coherence analysis
 ├── data/              # Data utilities
 │   └── loader.py      # Data loading from yfinance
 └── tests/             # Unit tests
